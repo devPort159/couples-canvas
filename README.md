@@ -12,6 +12,7 @@ npm i
 npx convex dev
 
 # Frontend env (in .env.local (Vite)):
+CONVEX_DEPLOYMENT=<your_convex_deployment_name>
 VITE_CONVEX_URL=<your_convex_deployment_url>
 
 # Run
