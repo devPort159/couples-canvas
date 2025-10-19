@@ -31,6 +31,12 @@ export const startStroke = mutation({
 		createdAt: v.number(),
 	},
 	handler: async (ctx, args) => {
+		// Check if canvas is published (immutable)
+		const canvas = await ctx.db.get(args.canvasId);
+		if (canvas?.publishedAt) {
+			throw new Error("Cannot draw on a published canvas");
+		}
+
 		const _id = await ctx.db.insert("strokes", {
 			canvasId: args.canvasId,
 			userId: args.userId,
@@ -40,6 +46,17 @@ export const startStroke = mutation({
 			mode: args.mode,
 			createdAt: args.createdAt,
 		});
+
+		// Add user as contributor if they have a userId
+		if (args.userId && canvas) {
+			const contributors = canvas.contributors ?? [];
+			if (!contributors.includes(args.userId)) {
+				await ctx.db.patch(args.canvasId, {
+					contributors: [...contributors, args.userId],
+				});
+			}
+		}
+
 		return _id as Id<"strokes">;
 	},
 });
@@ -76,7 +93,13 @@ export const appendStroke = mutation({
 		createdAt: v.number(),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.insert("strokes", {
+		// Check if canvas is published (immutable)
+		const canvas = await ctx.db.get(args.canvasId);
+		if (canvas?.publishedAt) {
+			throw new Error("Cannot draw on a published canvas");
+		}
+
+		const strokeId = await ctx.db.insert("strokes", {
 			canvasId: args.canvasId,
 			userId: args.userId,
 			color: args.color,
@@ -85,6 +108,18 @@ export const appendStroke = mutation({
 			mode: args.mode,
 			createdAt: args.createdAt,
 		});
+
+		// Add user as contributor if they have a userId
+		if (args.userId && canvas) {
+			const contributors = canvas.contributors ?? [];
+			if (!contributors.includes(args.userId)) {
+				await ctx.db.patch(args.canvasId, {
+					contributors: [...contributors, args.userId],
+				});
+			}
+		}
+
+		return strokeId;
 	},
 });
 
@@ -94,6 +129,12 @@ export const appendStroke = mutation({
 export const clearCanvas = mutation({
 	args: { canvasId: v.id("canvases") },
 	handler: async (ctx, { canvasId }) => {
+		// Check if canvas is published (immutable)
+		const canvas = await ctx.db.get(canvasId);
+		if (canvas?.publishedAt) {
+			throw new Error("Cannot clear a published canvas");
+		}
+
 		const rows = await ctx.db
 			.query("strokes")
 			.withIndex("by_canvas", (q) => q.eq("canvasId", canvasId))
@@ -109,6 +150,12 @@ export const clearCanvas = mutation({
 export const undoLastByUser = mutation({
 	args: { canvasId: v.id("canvases"), userId: v.string() },
 	handler: async (ctx, { canvasId, userId }) => {
+		// Check if canvas is published (immutable)
+		const canvas = await ctx.db.get(canvasId);
+		if (canvas?.publishedAt) {
+			throw new Error("Cannot undo on a published canvas");
+		}
+
 		const rows = await ctx.db
 			.query("strokes")
 			.withIndex("by_canvas", (q) => q.eq("canvasId", canvasId))

@@ -26,6 +26,7 @@ type Props = {
 	mode: Mode;
 	onCursor?: (worldOrNull?: { x: number; y: number }) => void;
 	onUndo?: (handler: () => void) => void;
+	isPublished?: boolean;
 };
 
 type PendingStroke = RenderStroke & {
@@ -42,6 +43,7 @@ export default function CanvasBoard({
 	mode,
 	onCursor,
 	onUndo,
+	isPublished = false,
 }: Props) {
 	const { canvasRef, drawAll, drawStroke, screenToWorld } = useCanvasRenderer();
 	const liveStrokeRef = useRef<RenderStroke | null>(null);
@@ -219,10 +221,29 @@ export default function CanvasBoard({
 		return () => window.removeEventListener("pointerup", up);
 	}, [pointerUp]);
 
-	// Attach pointer events on the canvas node
+	// Attach pointer events on the canvas node (only if not published)
 	useEffect(() => {
 		const el = canvasRef.current;
 		if (!el) return;
+
+		// Skip drawing events if canvas is published
+		if (isPublished) {
+			const move = (e: PointerEvent) => {
+				if (onCursor) {
+					const w = screenToWorld(e.offsetX, e.offsetY);
+					onCursor(w);
+				}
+			};
+			const leave = (_e: PointerEvent) => onCursor?.(undefined);
+
+			window.addEventListener("pointermove", move);
+			el.addEventListener("pointerleave", leave);
+
+			return () => {
+				window.removeEventListener("pointermove", move);
+				el.removeEventListener("pointerleave", leave);
+			};
+		}
 
 		const down = (e: PointerEvent) => pointerDown(e);
 		const move = (e: PointerEvent) => {
@@ -243,13 +264,33 @@ export default function CanvasBoard({
 		window.removeEventListener("pointermove", move);
 		el.removeEventListener("pointerleave", leave);
 		};
-	}, [canvasRef, pointerDown, pointerMove, screenToWorld, onCursor]);
+	}, [canvasRef, pointerDown, pointerMove, screenToWorld, onCursor, isPublished]);
 
 	return (
-		<canvas
-			ref={canvasRef}
-			className="w-full h-full touch-none block"
-			aria-label="Drawing canvas"
-		/>
+		<>
+			<canvas
+				ref={canvasRef}
+				className={`w-full h-full touch-none block ${isPublished ? 'cursor-not-allowed' : ''}`}
+				aria-label={isPublished ? "Published canvas (read-only)" : "Drawing canvas"}
+			/>
+			{isPublished && (
+				<div className="absolute top-3 right-3 bg-neutral-900/90 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 pointer-events-none">
+					<svg
+						width="14"
+						height="14"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
+						<rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+						<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+					</svg>
+					Read Only - Unpublish to Edit
+				</div>
+			)}
+		</>
 	);
 }

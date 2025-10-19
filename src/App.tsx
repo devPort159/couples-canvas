@@ -1,8 +1,10 @@
 // src/App.tsx
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { RouterProvider, matchRoute, useRouter } from "./lib/router";
-import NewCanvasRedirect from "./routes/NewCanvasRedirect";
+import HomePage from "./routes/HomePage";
 import CanvasPage from "./routes/CanvasPage";
+import MyCanvasesPage from "./routes/MyCanvasesPage";
+import PublicGalleryPage from "./routes/PublicGalleryPage";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL!);
 
@@ -20,7 +22,13 @@ function Routes() {
 	const { path } = useRouter();
 
 	// /
-	if (matchRoute("/", path)) return <NewCanvasRedirect />;
+	if (matchRoute("/", path)) return <HomePage />;
+
+	// /my-canvases
+	if (matchRoute("/my-canvases", path)) return <MyCanvasesPage />;
+
+	// /gallery
+	if (matchRoute("/gallery", path)) return <PublicGalleryPage />;
 
 	// /canvas/:slug
 	const m = matchRoute("/canvas/:slug", path);

@@ -34,9 +34,9 @@ export const updatePresence = mutation({
   	},
   	handler: async (ctx, { canvasId, userId, name, color, cursor }) => {
 		const existing = await ctx.db
-		.query("presence")
-		.withIndex("by_canvas_user", (q) => q.eq("canvasId", canvasId).eq("userId", userId))
-		.unique();
+			.query("presence")
+			.withIndex("by_canvas_user", (q) => q.eq("canvasId", canvasId).eq("userId", userId))
+			.unique();
 
     	const updatedAt = Date.now();
 

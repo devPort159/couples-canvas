@@ -19,9 +19,14 @@ VITE_CONVEX_URL=<your_convex_deployment_url>
 npm run dev
 ```
 
-- Visit / to create a canvas; you’ll be redirected to /canvas/:slug.
-- Use Share Canvas to copy the URL; open in another tab or device to test realtime.
+For setting up the auth integration with Clerk:
+1. Get your Convex deployment URL (e.g., `happy-animal-123.convex.site`)
+2. Go to Clerk Dashboard → Webhooks
+3. Add endpoint: `https://YOUR_CONVEX_SITE.convex.site/clerk-users-webhook`
+4. Subscribe to: `user.created`, `user.updated`, `user.deleted`
+5. Save and test
 
 Tech stack
 - React + TypeScript + Tailwind
 - Convex (DB, functions, live queries)
+- Clerk for auth

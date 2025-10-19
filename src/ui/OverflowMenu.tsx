@@ -6,6 +6,7 @@ type MenuItem = {
 	icon: React.ReactNode;
 	onClick: () => void;
 	destructive?: boolean;
+	disabled?: boolean;
 };
 
 type OverflowMenuProps = {
@@ -59,17 +60,22 @@ export default function OverflowMenu({
 			ref={menuRef}
 			className={`absolute bottom-full mb-2 ${
 				align === "right" ? "right-0" : "left-0"
-			} bg-white border border-neutral-200 rounded-lg shadow-lg min-w-[180px] z-50 overflow-hidden`}
+			} bg-white border border-neutral-200 rounded-lg shadow-lg min-w-[190px] z-50 overflow-hidden`}
 		>
 			{items.map((item, index) => (
 				<button
 					key={index}
 					onClick={() => {
-						item.onClick();
-						onClose();
+						if (!item.disabled) {
+							item.onClick();
+							onClose();
+						}
 					}}
+					disabled={item.disabled}
 					className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-						item.destructive
+						item.disabled
+							? "opacity-40 cursor-not-allowed"
+							: item.destructive
 							? "text-red-600 hover:bg-red-50 active:bg-red-100"
 							: "text-neutral-900 hover:bg-neutral-50 active:bg-neutral-100"
 					} ${index !== items.length - 1 ? "border-b border-neutral-100" : ""}`}

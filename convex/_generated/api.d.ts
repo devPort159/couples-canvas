@@ -9,8 +9,10 @@
  */
 
 import type * as canvases from "../canvases.js";
+import type * as http from "../http.js";
 import type * as presence from "../presence.js";
 import type * as strokes from "../strokes.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -28,8 +30,10 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   canvases: typeof canvases;
+  http: typeof http;
   presence: typeof presence;
   strokes: typeof strokes;
+  users: typeof users;
 }>;
 declare const fullApiWithMounts: typeof fullApi;
 

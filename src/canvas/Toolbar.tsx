@@ -18,6 +18,11 @@ type Props = {
 	onShare: () => void;
 	onUndo: () => void;
 	canvasId: Id<"canvases">;
+	isPublished: boolean;
+	isCreator: boolean;
+	onTogglePublish: () => void;
+	onViewContributors: () => void;
+	hasContributors: boolean;
 };
 
 const COLORS = new Map([
@@ -115,6 +120,58 @@ const MoreIcon = () => (
 	</svg>
 );
 
+const PublishIcon = () => (
+	<svg xmlns="http://www.w3.org/2000/svg" 
+		width="20" 
+		height="20" 
+		viewBox="0 0 24 24" 
+		fill="none" 
+		stroke="currentColor" 
+		strokeWidth="2" 
+		strokeLinecap="round" 
+		strokeLinejoin="round"
+	>
+		<path d="M12 3v12"/>
+		<path d="m17 8-5-5-5 5"/>
+		<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+	</svg>
+);
+
+const UnpublishIcon = () => (
+	<svg
+		width="20"
+		height="20"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="2"
+		strokeLinecap="round"
+		strokeLinejoin="round"
+	>
+		<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+		<line x1="12" y1="9" x2="12" y2="13" />
+		<line x1="12" y1="17" x2="12.01" y2="17" />
+	</svg>
+);
+
+const UsersIcon = () => (
+	<svg
+		width="20"
+		height="20"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="2"
+		strokeLinecap="round"
+		strokeLinejoin="round"
+	>
+		<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+		<circle cx="9" cy="7" r="4" />
+		<path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+		<path d="M16 3.13a4 4 0 0 1 0 7.75" />
+	</svg>
+);
+
 export default function Toolbar({
 	color,
 	onColor,
@@ -125,12 +182,19 @@ export default function Toolbar({
 	onShare,
 	onUndo,
 	canvasId,
+	isPublished,
+	isCreator,
+	onTogglePublish,
+	onViewContributors,
+	hasContributors,
 }: Props) {
 	const clearCanvas = useMutation(api.strokes.clearCanvas);
 
 	const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
 	const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
+	const [isDesktopOverflowMenuOpen, setIsDesktopOverflowMenuOpen] = useState(false);
 	const overflowButtonRef = useRef<HTMLButtonElement>(null);
+	const desktopOverflowButtonRef = useRef<HTMLButtonElement>(null);
 
 	return (
 		<>
@@ -221,37 +285,71 @@ export default function Toolbar({
 
 				{/* Action buttons */}
 				<div className="flex flex-col gap-2">
-					<Tooltip content="Undo" side="left">
+					<Tooltip content={isPublished ? "Cannot undo on published canvas" : "Undo"} side="left">
 						<button
-							className="p-3 rounded border border-neutral-200 shadow-xs bg-white hover:bg-neutral-50"
+							className="p-3 rounded border border-neutral-200 shadow-xs bg-white hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed"
 							onClick={onUndo}
 							aria-label="Undo"
+							disabled={isPublished}
 						>
 							<UndoIcon />
 						</button>
 					</Tooltip>
-					<Tooltip content="Clear canvas" side="left">
-						<button
-							className="p-3 rounded border border-neutral-200 shadow-xs bg-white hover:bg-neutral-50"
-							onClick={() => {
-								if (confirm("Clear the entire canvas for everyone?")) {
-									clearCanvas({ canvasId });
-								}
-							}}
-							aria-label="Clear canvas"
-						>
-							<TrashIcon />
-						</button>
-					</Tooltip>
-					<Tooltip content="Share" side="left">
-						<button
-							className="p-3 rounded border border-neutral-200 shadow-xs bg-white hover:bg-neutral-50"
-							onClick={onShare}
-							aria-label="Share canvas"
-						>
-							<ShareIcon />
-						</button>
-					</Tooltip>
+
+					{/* Overflow menu for Share/Clear/Publish */}
+					<div className="relative">
+						<Tooltip content="More actions" side="left">
+							<button
+								ref={desktopOverflowButtonRef}
+								className={`p-3 rounded border border-neutral-200 shadow-xs ${
+									isPublished 
+										? "bg-amber-50 hover:bg-amber-100 text-amber-700" 
+										: "bg-white hover:bg-neutral-50"
+								}`}
+								onClick={() => setIsDesktopOverflowMenuOpen(!isDesktopOverflowMenuOpen)}
+								aria-label="More options"
+							>
+								<MoreIcon />
+							</button>
+						</Tooltip>
+						<OverflowMenu
+							isOpen={isDesktopOverflowMenuOpen}
+							onClose={() => setIsDesktopOverflowMenuOpen(false)}
+							triggerRef={desktopOverflowButtonRef as React.RefObject<HTMLElement>}
+							items={[
+								{
+									label: "Share",
+									icon: <ShareIcon />,
+									onClick: onShare,
+								},
+								...(hasContributors ? [
+									{
+										label: "View Contributors",
+										icon: <UsersIcon />,
+										onClick: onViewContributors,
+									},
+								] : []),
+								...(isCreator ? [
+									{
+										label: "Clear Canvas",
+										icon: <TrashIcon />,
+										onClick: () => {
+											if (confirm("Clear the entire canvas for everyone?")) {
+												clearCanvas({ canvasId });
+											}
+										},
+										destructive: true,
+										disabled: isPublished,
+									},
+									{
+										label: isPublished ? "Unpublish" : "Publish Canvas",
+										icon: isPublished ? <UnpublishIcon /> : <PublishIcon />,
+										onClick: onTogglePublish,
+									},
+								] : []),
+							]}
+						/>
+					</div>
 				</div>
 			</div>
 
@@ -313,14 +411,15 @@ export default function Toolbar({
 					/>
 				</div>
 
-				{/* Undo button */}
-				<button
-					className="p-2.5 rounded border border-neutral-200 shadow-xs bg-white"
-					onClick={onUndo}
-					aria-label="Undo"
-				>
-					<UndoIcon />
-				</button>
+			{/* Undo button */}
+			<button
+				className="p-2.5 rounded border border-neutral-200 shadow-xs bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+				onClick={onUndo}
+				aria-label="Undo"
+				disabled={isPublished}
+			>
+				<UndoIcon />
+			</button>
 
 				{/* Overflow menu */}
 				<div className="relative">
@@ -342,16 +441,31 @@ export default function Toolbar({
 								icon: <ShareIcon />,
 								onClick: onShare,
 							},
-							{
-								label: "Clear Canvas",
-								icon: <TrashIcon />,
-								onClick: () => {
-									if (confirm("Clear the entire canvas for everyone?")) {
-										clearCanvas({ canvasId });
-									}
+							...(hasContributors ? [
+								{
+									label: "View Contributors",
+									icon: <UsersIcon />,
+									onClick: onViewContributors,
 								},
-								destructive: true,
-							},
+							] : []),
+							...(isCreator ? [
+								{
+									label: "Clear Canvas",
+									icon: <TrashIcon />,
+									onClick: () => {
+										if (confirm("Clear the entire canvas for everyone?")) {
+											clearCanvas({ canvasId });
+										}
+									},
+									destructive: true,
+									disabled: isPublished,
+								},
+								{
+									label: isPublished ? "Unpublish" : "Publish Canvas",
+									icon: isPublished ? <UnpublishIcon /> : <PublishIcon />,
+									onClick: onTogglePublish,
+								},
+							] : []),
 						]}
 					/>
 				</div>

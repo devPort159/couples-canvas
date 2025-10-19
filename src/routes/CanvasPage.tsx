@@ -1,13 +1,20 @@
 import { useMemo, useState, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useUser } from "@clerk/clerk-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import CanvasBoard from "../canvas/CanvasBoard";
 import Toolbar from "../canvas/Toolbar";
 import PresenceLayer from "../canvas/PresenceLayer";
+import EditableText from "../ui/EditableText";
+import BackButton from "../ui/BackButton";
+import ContributorsModal from "../ui/ContributorsModal";
 export type Mode = "draw" | "erase";
 
 export default function CanvasPage({ slug }: { slug: string }) {
+	const { user } = useUser();
+	// Use Clerk userId if signed in, otherwise generate anonymous ID
+	const userId = useMemo(() => user?.id ?? crypto.randomUUID(), [user?.id]);
 	const canvas = useQuery(api.canvases.getCanvasBySlug, { slug });
 	const canvasId = canvas?._id as Id<"canvases"> | undefined;
 
@@ -19,17 +26,20 @@ export default function CanvasPage({ slug }: { slug: string }) {
 	const updatePresence = useMutation(api.presence.updatePresence);
 	const getPresence = useQuery(
 		api.presence.getPresence,
-		canvasId ? { canvasId } : "skip"
+		canvasId && userId ? { canvasId } : "skip"
 	);
 
 	const [color, setColor] = useState("#111111");
 	const [size, setSize] = useState(0.006);
 	const [mode, setMode] = useState<Mode>("draw");
 	const [showCopiedToast, setShowCopiedToast] = useState(false);
+	const [showContributorsModal, setShowContributorsModal] = useState(false);
 
-	const userId = useMemo(() => crypto.randomUUID(), []);
+	
 	const undoHandlerRef = useRef<(() => void) | null>(null);
 	const undo = useMutation(api.strokes.undoLastByUser);
+	const updateMetadata = useMutation(api.canvases.updateCanvasMetadata);
+	const togglePublish = useMutation(api.canvases.togglePublish);
 
 	// Throttle presence updates to avoid flooding the database
 	const lastPresenceUpdateRef = useRef<number>(0);
@@ -78,6 +88,65 @@ export default function CanvasPage({ slug }: { slug: string }) {
 		[canvasId, userId, updatePresence]
 	);
 
+	const handleSaveTitle = useCallback(
+		async (title: string) => {
+			if (!canvasId || !userId) return;
+			try {
+				await updateMetadata({ canvasId, userId, title });
+			} catch (error) {
+				console.error("Failed to update title:", error);
+			}
+		},
+		[canvasId, userId, updateMetadata]
+	);
+
+	const handleSaveDescription = useCallback(
+		async (description: string) => {
+			if (!canvasId || !userId) return;
+			try {
+				await updateMetadata({ canvasId, userId, description });
+			} catch (error) {
+				console.error("Failed to update description:", error);
+			}
+		},
+		[canvasId, userId, updateMetadata]
+	);
+
+	const handleTogglePublish = useCallback(async () => {
+		if (!canvasId || !userId) return;
+		
+		const isPublished = !!canvas?.publishedAt;
+		
+		if (!isPublished) {
+			// Publishing: check if title exists
+			if (!canvas?.title?.trim()) {
+				alert("Please add a title before publishing your canvas.");
+				return;
+			}
+			if (confirm("Publish this canvas to the public gallery? Once published, it will be immutable (no one can edit it).")) {
+				try {
+					await togglePublish({ canvasId, userId, publish: true });
+				} catch (error) {
+					console.error("Failed to publish:", error);
+					alert("Failed to publish canvas. " + (error as Error).message);
+				}
+			}
+		} else {
+			// Unpublishing
+			if (confirm("Unpublish this canvas? It will become editable and private again.")) {
+				try {
+					await togglePublish({ canvasId, userId, publish: false });
+				} catch (error) {
+					console.error("Failed to unpublish:", error);
+					alert("Failed to unpublish canvas. " + (error as Error).message);
+				}
+			}
+		}
+	}, [canvasId, userId, canvas?.publishedAt, canvas?.title, togglePublish]);
+
+	const isCreator = canvas?.creatorId === userId;
+	const isPublished = !!canvas?.publishedAt;
+
 	if (!canvasId) {
 		return (
 			<div className="min-h-dvh grid place-items-center">
@@ -88,8 +157,29 @@ export default function CanvasPage({ slug }: { slug: string }) {
 
 	return (
 		<div className="w-full h-dvh flex flex-col lg:flex-row">
-			<div className="relative flex-1 bg-gradient-to-b from-neutral-100 to-neutral-200 flex items-center justify-center p-4 overflow-hidden flex-col gap-8">
-				<h1 className="text-2xl tracking-[-0.03em] font-serif font-bold text-[#09090B]">couple&apos;s canvas.</h1>
+			<BackButton />
+			<div className="relative flex-1 bg-gradient-to-b from-neutral-100 to-neutral-200 flex items-center justify-center p-4 overflow-hidden flex-col gap-6">
+				<div className="flex flex-col gap-2">
+					<EditableText
+						value={canvas?.title}
+						placeholder="Add a title..."
+						onSave={handleSaveTitle}
+						isEditable={isCreator}
+						as="h1"
+						className="text-2xl tracking-[-0.03em] font-serif font-bold text-[#09090B] text-center max-w-md"
+						inputClassName="text-2xl tracking-[-0.03em] font-serif font-bold text-[#09090B] text-center"
+					/>
+					<EditableText
+						value={canvas?.description}
+						placeholder="Add a description..."
+						onSave={handleSaveDescription}
+						isEditable={isCreator}
+						as="h2"
+						multiline={true}
+						className="tracking-[-0.03em] font-serif font-medium text-[#09090B] text-center max-w-md"
+						inputClassName="tracking-[-0.03em] font-serif font-medium text-[#09090B] text-center resize-none"
+					/>
+				</div>
 				<div 
 					className="relative aspect-square shadow-2xl overflow-hidden max-w-full max-h-full bg-neutral-50"
 					style={{ 
@@ -108,6 +198,7 @@ export default function CanvasPage({ slug }: { slug: string }) {
 						onUndo={(handler) => {
 							undoHandlerRef.current = handler;
 						}}
+						isPublished={isPublished}
 					/>
 					<PresenceLayer presence={(getPresence ?? []).filter(p => p.userId !== userId)} />
 				</div>
@@ -119,6 +210,11 @@ export default function CanvasPage({ slug }: { slug: string }) {
 				onSize={setSize}
 				mode={mode}
 				onMode={setMode}
+				isPublished={isPublished}
+				isCreator={isCreator}
+				onTogglePublish={handleTogglePublish}
+				onViewContributors={() => setShowContributorsModal(true)}
+				hasContributors={(canvas?.contributorsData?.length ?? 0) > 0}
 				onShare={async () => {
 					const url = window.location.href;
 					
@@ -175,6 +271,14 @@ export default function CanvasPage({ slug }: { slug: string }) {
 					</div>
 				</div>
 			)}
+
+			{/* Contributors Modal */}
+			<ContributorsModal
+				isOpen={showContributorsModal}
+				onClose={() => setShowContributorsModal(false)}
+				contributors={canvas?.contributorsData ?? []}
+				creatorId={canvas?.creatorId}
+			/>
 		</div>
 	);
 }
