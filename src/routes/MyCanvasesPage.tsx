@@ -114,9 +114,9 @@ export default function MyCanvasesPage() {
 
 			<SignedIn>
 				<BackButton />
-				<div className="max-w-7xl mx-auto px-6 py-12">
+				<div className="max-w-7xl mx-auto px-6 sm: pb-12 pt-16 py-12">
 					{/* Header */}
-					<div className="mb-8">
+					<div className="mb-2 sm:mb-8">
 						<h1 className="text-4xl font-serif font-bold text-neutral-900 mb-2">
 							My Canvases
 						</h1>
@@ -197,7 +197,7 @@ export default function MyCanvasesPage() {
 							)}
 						</div>
 					) : (
-						<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+						<div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 							{displayedCanvases.map((canvas) => {
 								const hasCreatorInfo = "creatorName" in canvas;
 								const creatorName = hasCreatorInfo ? (canvas as any).creatorName as string | undefined : undefined;
@@ -221,6 +221,7 @@ export default function MyCanvasesPage() {
 										creatorImageUrl={creatorImageUrl}
 										showDelete={isOwned}
 										onDelete={() => handleDeleteClick(canvas._id, canvas.title)}
+										thumbnailUrl={(canvas as any).thumbnailUrl}
 									/>
 								);
 							})}

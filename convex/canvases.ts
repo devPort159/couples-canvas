@@ -1,10 +1,63 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, action } from "./_generated/server";
+import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
 function randomSlug(len = 6) {
 	// URL-safe base36-ish short id
 	return Math.random().toString(36).slice(2, 2 + len);
+}
+
+/**
+ * Generate SVG thumbnail from canvas strokes
+ * Returns SVG string ready to be stored
+ */
+function generateThumbnailSVG(strokes: any[]): string {
+	const viewBoxSize = 1000; // Scale 0-1 world coords to 1000x1000
+	let paths = "";
+
+	for (const stroke of strokes) {
+		if (stroke.points.length === 0) continue;
+
+		// Convert world coordinates (0-1) to SVG coordinates
+		const points = stroke.points.map((p: any) => ({
+			x: p.x * viewBoxSize,
+			y: p.y * viewBoxSize,
+		}));
+
+		// Build SVG path using quadratic curves (matching renderer)
+		let pathData = `M ${points[0].x},${points[0].y}`;
+
+		if (points.length === 1) {
+			// Single point: draw tiny line
+			pathData += ` L ${points[0].x + 0.1},${points[0].y + 0.1}`;
+		} else {
+			// Quadratic smoothing
+			for (let i = 1; i < points.length; i++) {
+				const p0 = points[i - 1];
+				const p1 = points[i];
+				const midX = (p0.x + p1.x) / 2;
+				const midY = (p0.y + p1.y) / 2;
+				pathData += ` Q ${p0.x},${p0.y} ${midX},${midY}`;
+			}
+			// Line to last point
+			const last = points[points.length - 1];
+			pathData += ` L ${last.x},${last.y}`;
+		}
+
+		// Calculate stroke width (scale size by viewBoxSize)
+		const strokeWidth = Math.max(1, stroke.size * viewBoxSize);
+
+		// Handle erase mode with clip-path or skip for simplicity
+		// For thumbnails, we'll render eraser strokes as white
+		const strokeColor = stroke.mode === "erase" ? "#ffffff" : stroke.color;
+
+		paths += `<path d="${pathData}" stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>\n`;
+	}
+
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBoxSize} ${viewBoxSize}">
+<rect width="${viewBoxSize}" height="${viewBoxSize}" fill="white"/>
+${paths}</svg>`;
 }
 
 export const createCanvas = mutation({
@@ -115,14 +168,43 @@ export const updateCanvasMetadata = mutation({
 	},
 });
 
-export const togglePublish = mutation({
+// Helper query to get canvas by ID (for use in actions)
+export const getCanvasById = query({
+	args: { id: v.id("canvases") },
+	handler: async (ctx, args) => {
+		return await ctx.db.get(args.id);
+	},
+});
+
+// Helper mutation to update publish status
+export const updatePublishStatus = mutation({
+	args: {
+		canvasId: v.id("canvases"),
+		publishedAt: v.union(v.number(), v.null()),
+		thumbnailStorageId: v.union(v.id("_storage"), v.null()),
+	},
+	handler: async (ctx, args) => {
+		const updates: any = {};
+		// Convert null to undefined for clearing optional fields
+		updates.publishedAt = args.publishedAt === null ? undefined : args.publishedAt;
+		updates.thumbnailStorageId = args.thumbnailStorageId === null ? undefined : args.thumbnailStorageId;
+		await ctx.db.patch(args.canvasId, updates);
+	},
+});
+
+export const togglePublish = action({
 	args: {
 		canvasId: v.id("canvases"),
 		userId: v.string(),
 		publish: v.boolean(),
 	},
 	handler: async (ctx, args) => {
-		const canvas = await ctx.db.get(args.canvasId);
+		// @ts-ignore - Types will be generated after first successful deploy
+		// Fetch canvas
+		const canvas = await ctx.runQuery(api.canvases.getCanvasById, {
+			id: args.canvasId,
+		});
+		
 		if (!canvas) throw new Error("Canvas not found");
 		if (canvas.creatorId !== args.userId) {
 			throw new Error("Only the creator can publish/unpublish");
@@ -133,10 +215,41 @@ export const togglePublish = mutation({
 			if (!canvas.title || canvas.title.trim() === "") {
 				throw new Error("Title is required to publish a canvas");
 			}
-			await ctx.db.patch(args.canvasId, { publishedAt: Date.now() });
+
+			// @ts-ignore - Types will be generated after first successful deploy
+			// Fetch all strokes for this canvas
+			const strokes = await ctx.runQuery(api.strokes.listStrokes, {
+				canvasId: args.canvasId,
+			});
+
+			// Generate SVG thumbnail
+			const svgString = generateThumbnailSVG(strokes);
+			
+			// Convert string to Blob for storage
+			const encoder = new TextEncoder();
+			const svgBytes = encoder.encode(svgString);
+			const thumbnailStorageId = await ctx.storage.store(
+				new Blob([svgBytes], { type: "image/svg+xml" })
+			);
+
+			// @ts-ignore - Types will be generated after first successful deploy
+			// Update canvas with publishedAt and thumbnailStorageId
+			await ctx.runMutation(api.canvases.updatePublishStatus, {
+				canvasId: args.canvasId,
+				publishedAt: Date.now(),
+				thumbnailStorageId,
+			});
 		} else {
-			// Unpublishing
-			await ctx.db.patch(args.canvasId, { publishedAt: undefined });
+			// Unpublishing: delete thumbnail if it exists
+			if (canvas.thumbnailStorageId) {
+				await ctx.storage.delete(canvas.thumbnailStorageId);
+			}
+			// @ts-ignore - Types will be generated after first successful deploy
+			await ctx.runMutation(api.canvases.updatePublishStatus, {
+				canvasId: args.canvasId,
+				publishedAt: null,
+				thumbnailStorageId: null,
+			});
 		}
 
 		return { success: true };
@@ -173,7 +286,7 @@ export const listPublishedCanvases = query({
 			.filter((q) => q.neq(q.field("publishedAt"), undefined))
 			.take(limit);
 
-		// Fetch creator data for all canvases
+		// Fetch creator data and thumbnail URLs for all canvases
 		const results = await Promise.all(
 			canvases.map(async (c) => {
 				let creator = null;
@@ -183,6 +296,11 @@ export const listPublishedCanvases = query({
 						.withIndex("by_clerk_id", (q) => q.eq("clerkId", c.creatorId!))
 						.unique();
 				}
+
+				// Get thumbnail URL if it exists
+				const thumbnailUrl = c.thumbnailStorageId
+					? await ctx.storage.getUrl(c.thumbnailStorageId)
+					: null;
 
 				return {
 					_id: c._id as Id<"canvases">,
@@ -194,6 +312,7 @@ export const listPublishedCanvases = query({
 					creatorName: creator?.username || creator?.firstName || "Anonymous",
 					creatorImageUrl: creator?.imageUrl,
 					contributorCount: c.contributors?.length ?? 0,
+					thumbnailUrl,
 				};
 			})
 		);
@@ -212,15 +331,27 @@ export const listMyOwnedCanvases = query({
 			.withIndex("by_creator", (q) => q.eq("creatorId", args.userId))
 			.collect();
 
-		return canvases.map((c) => ({
-			_id: c._id as Id<"canvases">,
-			slug: c.slug,
-			title: c.title,
-			description: c.description,
-			publishedAt: c.publishedAt,
-			createdAt: c.createdAt,
-			contributorCount: c.contributors?.length ?? 0,
-		}));
+		// Add thumbnail URLs
+		const results = await Promise.all(
+			canvases.map(async (c) => {
+				const thumbnailUrl = c.thumbnailStorageId
+					? await ctx.storage.getUrl(c.thumbnailStorageId)
+					: null;
+
+				return {
+					_id: c._id as Id<"canvases">,
+					slug: c.slug,
+					title: c.title,
+					description: c.description,
+					publishedAt: c.publishedAt,
+					createdAt: c.createdAt,
+					contributorCount: c.contributors?.length ?? 0,
+					thumbnailUrl,
+				};
+			})
+		);
+
+		return results;
 	},
 });
 
@@ -236,7 +367,7 @@ export const listMyCollaborations = query({
 				c.contributors?.includes(args.userId) && c.creatorId !== args.userId
 		);
 
-		// Fetch creator data for collaborations
+		// Fetch creator data and thumbnail URLs for collaborations
 		const results = await Promise.all(
 			collaborations.map(async (c) => {
 				let creator = null;
@@ -246,6 +377,10 @@ export const listMyCollaborations = query({
 						.withIndex("by_clerk_id", (q) => q.eq("clerkId", c.creatorId!))
 						.unique();
 				}
+
+				const thumbnailUrl = c.thumbnailStorageId
+					? await ctx.storage.getUrl(c.thumbnailStorageId)
+					: null;
 
 				return {
 					_id: c._id as Id<"canvases">,
@@ -258,6 +393,7 @@ export const listMyCollaborations = query({
 					creatorName: creator?.username || creator?.firstName || "Anonymous",
 					creatorImageUrl: creator?.imageUrl,
 					contributorCount: c.contributors?.length ?? 0,
+					thumbnailUrl,
 				};
 			})
 		);
@@ -276,6 +412,11 @@ export const deleteCanvas = mutation({
 		if (!canvas) throw new Error("Canvas not found");
 		if (canvas.creatorId !== args.userId) {
 			throw new Error("Only the creator can delete this canvas");
+		}
+
+		// Delete thumbnail if it exists
+		if (canvas.thumbnailStorageId) {
+			await ctx.storage.delete(canvas.thumbnailStorageId);
 		}
 
 		// Delete all strokes associated with this canvas

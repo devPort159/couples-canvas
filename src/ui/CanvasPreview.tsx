@@ -15,11 +15,16 @@ type Stroke = {
 type Props = {
 	canvasId: Id<"canvases">;
 	className?: string;
+	thumbnailUrl?: string | null;
 };
 
-export default function CanvasPreview({ canvasId, className = "" }: Props) {
+export default function CanvasPreview({ canvasId, className = "", thumbnailUrl }: Props) {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
-	const strokes = useQuery(api.strokes.listStrokes, { canvasId });
+	// Only query strokes if we don't have a thumbnail (backward compatibility)
+	const strokes = useQuery(
+		api.strokes.listStrokes,
+		thumbnailUrl ? "skip" : { canvasId }
+	);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -114,12 +119,23 @@ export default function CanvasPreview({ canvasId, className = "" }: Props) {
 		}
 	}, [strokes]);
 
+	// If we have a thumbnail URL (published canvas), use it directly
+	if (thumbnailUrl) {
+		return (
+			<img
+				src={thumbnailUrl}
+				alt="Canvas preview"
+				className={className}
+				style={{ objectFit: "cover" }}
+			/>
+		);
+	}
+
+	// Otherwise show placeholder (unpublished canvas - no need to load strokes)
 	return (
-		<canvas
-			ref={canvasRef}
-			className={className}
-			aria-label="Canvas preview"
-		/>
+		<div className={`${className} bg-white`} aria-label="Canvas preview (unpublished)">
+			{/* Empty white placeholder */}
+		</div>
 	);
 }
 

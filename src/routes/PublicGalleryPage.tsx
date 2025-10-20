@@ -40,7 +40,7 @@ export default function PublicGalleryPage() {
 	return (
 		<div className="min-h-dvh bg-gradient-to-b from-neutral-100 to-neutral-200">
 			<BackButton />
-			<div className="max-w-7xl mx-auto px-6 py-12">
+			<div className="max-w-7xl mx-auto px-6 pb-12 pt-16 sm:py-12">
 				{/* Header */}
 				<div className="mb-8">
 					<h1 className="text-4xl font-serif font-bold text-neutral-900 mb-2">
@@ -82,7 +82,7 @@ export default function PublicGalleryPage() {
 					</div>
 				) : (
 					<>
-						<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+						<div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 							{publishedCanvases.map((canvas) => (
 								<CanvasCard
 									key={canvas._id}
@@ -96,6 +96,9 @@ export default function PublicGalleryPage() {
 									isPublished={true}
 									creatorName={canvas.creatorName}
 									creatorImageUrl={canvas.creatorImageUrl}
+									hideContributorCountOnMobile={true}
+									showPublishedBadge={false}
+									thumbnailUrl={canvas.thumbnailUrl}
 								/>
 							))}
 						</div>

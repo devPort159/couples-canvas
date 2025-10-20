@@ -24,6 +24,7 @@ export default defineSchema({
 		publishedAt: v.optional(v.number()),
 		title: v.optional(v.string()),
 		description: v.optional(v.string()),
+		thumbnailStorageId: v.optional(v.id("_storage")), // SVG thumbnail for gallery
 	})
 		.index("by_slug", ["slug"])
 		.index("by_creator", ["creatorId"])
@@ -47,21 +48,22 @@ export default defineSchema({
 		createdAt: v.number(),
 	}).index("by_canvas", ["canvasId"]),
 
+	// OLD PRESENCE TABLE - Removed, now using @convex-dev/presence component
 	// Read: 750 per session - sampling and filter out self
 	// Write: 750 per session - sampling 
-	presence: defineTable({
-		canvasId: v.id("canvases"),
-		userId: v.string(),
-		name: v.optional(v.string()),
-		color: v.optional(v.string()),
-		cursor: v.optional(
-			v.object({
-				x: v.number(),
-				y: v.number(),
-			})
-		),
-		updatedAt: v.number(),
-	})
-		.index("by_canvas", ["canvasId"])
-		.index("by_canvas_user", ["canvasId", "userId"]),
+	// presence: defineTable({
+	// 	canvasId: v.id("canvases"),
+	// 	userId: v.string(),
+	// 	name: v.optional(v.string()),
+	// 	color: v.optional(v.string()),
+	// 	cursor: v.optional(
+	// 		v.object({
+	// 			x: v.number(),
+	// 			y: v.number(),
+	// 		})
+	// 	),
+	// 	updatedAt: v.number(),
+	// })
+	// 	.index("by_canvas", ["canvasId"])
+	// 	.index("by_canvas_user", ["canvasId", "userId"]),
 });

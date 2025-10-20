@@ -4,8 +4,12 @@ export default function BackButton() {
 	const navigate = useNavigate();
 
 	const handleBack = () => {
-		// Go back in history, or to home if no history
-		if (window.history.length > 1) {
+		// Check if we came from within the app by checking the referrer
+		const referrer = document.referrer;
+		const isFromSameApp = referrer && new URL(referrer).origin === window.location.origin;
+		
+		// If we have history within the app, go back. Otherwise, go home.
+		if (window.history.length > 1 && isFromSameApp) {
 			window.history.back();
 		} else {
 			navigate("/");

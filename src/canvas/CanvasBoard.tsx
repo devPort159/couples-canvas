@@ -24,7 +24,7 @@ type Props = {
 	color: string;
 	size: number;
 	mode: Mode;
-	onCursor?: (worldOrNull?: { x: number; y: number }) => void;
+	// onCursor?: (worldOrNull?: { x: number; y: number }) => void; // OLD PRESENCE - commented out
 	onUndo?: (handler: () => void) => void;
 	isPublished?: boolean;
 };
@@ -41,7 +41,7 @@ export default function CanvasBoard({
 	color,
 	size,
 	mode,
-	onCursor,
+	// onCursor, // OLD PRESENCE - commented out
 	onUndo,
 	isPublished = false,
 }: Props) {
@@ -228,43 +228,46 @@ export default function CanvasBoard({
 
 		// Skip drawing events if canvas is published
 		if (isPublished) {
-			const move = (e: PointerEvent) => {
-				if (onCursor) {
-					const w = screenToWorld(e.offsetX, e.offsetY);
-					onCursor(w);
-				}
-			};
-			const leave = (_e: PointerEvent) => onCursor?.(undefined);
+			// OLD PRESENCE - cursor tracking removed
+			// const move = (e: PointerEvent) => {
+			// 	if (onCursor) {
+			// 		const w = screenToWorld(e.offsetX, e.offsetY);
+			// 		onCursor(w);
+			// 	}
+			// };
+			// const leave = (_e: PointerEvent) => onCursor?.(undefined);
 
-			window.addEventListener("pointermove", move);
-			el.addEventListener("pointerleave", leave);
+			// window.addEventListener("pointermove", move);
+			// el.addEventListener("pointerleave", leave);
 
-			return () => {
-				window.removeEventListener("pointermove", move);
-				el.removeEventListener("pointerleave", leave);
-			};
+			// return () => {
+			// 	window.removeEventListener("pointermove", move);
+			// 	el.removeEventListener("pointerleave", leave);
+			// };
+			return; // No events needed for published canvas
 		}
 
 		const down = (e: PointerEvent) => pointerDown(e);
 		const move = (e: PointerEvent) => {
 			pointerMove(e);
-			if (onCursor) {
-				const w = screenToWorld(e.offsetX, e.offsetY);
-				onCursor(w);
-			}
+			// OLD PRESENCE - cursor tracking removed
+			// if (onCursor) {
+			// 	const w = screenToWorld(e.offsetX, e.offsetY);
+			// 	onCursor(w);
+			// }
 		};
-		const leave = (_e: PointerEvent) => onCursor?.(undefined);
+		// const leave = (_e: PointerEvent) => onCursor?.(undefined); // OLD PRESENCE
 
 		el.addEventListener("pointerdown", down);
 		window.addEventListener("pointermove", move);
-		el.addEventListener("pointerleave", leave);
+		// el.addEventListener("pointerleave", leave); // OLD PRESENCE
 
 		return () => {
 		el.removeEventListener("pointerdown", down);
 		window.removeEventListener("pointermove", move);
-		el.removeEventListener("pointerleave", leave);
+		// el.removeEventListener("pointerleave", leave); // OLD PRESENCE
 		};
-	}, [canvasRef, pointerDown, pointerMove, screenToWorld, onCursor, isPublished]);
+	}, [canvasRef, pointerDown, pointerMove, screenToWorld, isPublished]); // removed onCursor from deps
 
 	return (
 		<>

@@ -1,5 +1,5 @@
-import { useMemo, useState, useCallback, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { useUser } from "@clerk/clerk-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -9,12 +9,23 @@ import PresenceLayer from "../canvas/PresenceLayer";
 import EditableText from "../ui/EditableText";
 import BackButton from "../ui/BackButton";
 import ContributorsModal from "../ui/ContributorsModal";
+import usePresence from "@convex-dev/presence/react";
 export type Mode = "draw" | "erase";
 
 export default function CanvasPage({ slug }: { slug: string }) {
 	const { user } = useUser();
-	// Use Clerk userId if signed in, otherwise generate anonymous ID
-	const userId = useMemo(() => user?.id ?? crypto.randomUUID(), [user?.id]);
+	// Use Clerk userId if signed in, otherwise use persisted anonymous ID
+	const userId = useMemo(() => {
+		if (user?.id) return user.id;
+		
+		// For anonymous users, persist the ID in localStorage to avoid creating new presence entries on each reload
+		const stored = localStorage.getItem('anonymousUserId');
+		if (stored) return stored;
+		
+		const newId = crypto.randomUUID();
+		localStorage.setItem('anonymousUserId', newId);
+		return newId;
+	}, [user?.id]);
 	const canvas = useQuery(api.canvases.getCanvasBySlug, { slug });
 	const canvasId = canvas?._id as Id<"canvases"> | undefined;
 
@@ -23,11 +34,41 @@ export default function CanvasPage({ slug }: { slug: string }) {
 		canvasId ? { canvasId } : "skip"
 	);
 
-	const updatePresence = useMutation(api.presence.updatePresence);
-	const getPresence = useQuery(
-		api.presence.getPresence,
-		canvasId && userId ? { canvasId } : "skip"
+	// New Convex Presence Component
+	const userName = user?.firstName || user?.username || `Anonymous ${userId.slice(0, 4)}`;
+	const presenceState = usePresence(
+		api.presence,
+		canvasId ?? "skip", // Use a unique fallback to avoid polluting a shared room
+		userId // Pass userId, not userName (userName goes in the data field via backend)
 	);
+	// Filter for ONLY online users, and exclude current user
+	const otherUsers = presenceState?.filter(p => p.online && p.userId !== userId) ?? [];
+	
+	// DEBUG: Log presence data to understand what's happening
+	useEffect(() => {
+		if (presenceState) {
+			console.log('🔍 Full presence state:', presenceState);
+			console.log('👤 Current userId:', userId);
+			console.log('✅ Online users:', presenceState.filter(p => p.online));
+			console.log('❌ Offline users:', presenceState.filter(p => !p.online));
+			console.log('📊 Other users (online, excluding self):', otherUsers);
+		}
+	}, [presenceState, userId, otherUsers]);
+
+	// Update user display name when it changes
+	const updateUserData = useMutation(api.presence.updateUserData);
+	useEffect(() => {
+		if (canvasId && userId) {
+			updateUserData({ roomId: canvasId, userId, data: userName });
+		}
+	}, [canvasId, userId, userName, updateUserData]);
+
+	// OLD PRESENCE SYSTEM (commented out)
+	// const updatePresence = useMutation(api.presence.updatePresence);
+	// const getPresence = useQuery(
+	// 	api.presence.getPresence,
+	// 	canvasId && userId ? { canvasId } : "skip"
+	// );
 
 	const [color, setColor] = useState("#111111");
 	const [size, setSize] = useState(0.006);
@@ -39,54 +80,55 @@ export default function CanvasPage({ slug }: { slug: string }) {
 	const undoHandlerRef = useRef<(() => void) | null>(null);
 	const undo = useMutation(api.strokes.undoLastByUser);
 	const updateMetadata = useMutation(api.canvases.updateCanvasMetadata);
-	const togglePublish = useMutation(api.canvases.togglePublish);
+	const togglePublish = useAction(api.canvases.togglePublish);
 
-	// Throttle presence updates to avoid flooding the database
-	const lastPresenceUpdateRef = useRef<number>(0);
-	const pendingPresenceRef = useRef<{ x: number; y: number } | undefined>(undefined);
-	const presenceTimeoutRef = useRef<number | undefined>(undefined);
+	// OLD PRESENCE SYSTEM (commented out)
+	// // Throttle presence updates to avoid flooding the database
+	// const lastPresenceUpdateRef = useRef<number>(0);
+	// const pendingPresenceRef = useRef<{ x: number; y: number } | undefined>(undefined);
+	// const presenceTimeoutRef = useRef<number | undefined>(undefined);
 
-	const throttledUpdatePresence = useCallback(
-		(cursorWorld?: { x: number; y: number }) => {
-			if (!canvasId) return;
+	// const throttledUpdatePresence = useCallback(
+	// 	(cursorWorld?: { x: number; y: number }) => {
+	// 		if (!canvasId) return;
 
-			const now = Date.now();
-			const timeSinceLastUpdate = now - lastPresenceUpdateRef.current;
-			const THROTTLE_MS = 100; // Update at most every 100ms
+	// 		const now = Date.now();
+	// 		const timeSinceLastUpdate = now - lastPresenceUpdateRef.current;
+	// 		const THROTTLE_MS = 100; // Update at most every 100ms
 
-			// Clear any pending timeout
-			if (presenceTimeoutRef.current) {
-				clearTimeout(presenceTimeoutRef.current);
-				presenceTimeoutRef.current = undefined;
-			}
+	// 		// Clear any pending timeout
+	// 		if (presenceTimeoutRef.current) {
+	// 			clearTimeout(presenceTimeoutRef.current);
+	// 			presenceTimeoutRef.current = undefined;
+	// 		}
 
-			if (timeSinceLastUpdate >= THROTTLE_MS) {
-				// Enough time has passed, update immediately
-				lastPresenceUpdateRef.current = now;
-				updatePresence({
-					canvasId,
-					userId,
-					cursor: cursorWorld ? { x: cursorWorld.x, y: cursorWorld.y } : undefined,
-				});
-			} else {
-				// Too soon, schedule an update for later
-				pendingPresenceRef.current = cursorWorld;
-				presenceTimeoutRef.current = window.setTimeout(() => {
-					lastPresenceUpdateRef.current = Date.now();
-					updatePresence({
-						canvasId,
-						userId,
-						cursor: pendingPresenceRef.current
-							? { x: pendingPresenceRef.current.x, y: pendingPresenceRef.current.y }
-							: undefined,
-					});
-					pendingPresenceRef.current = undefined;
-					presenceTimeoutRef.current = undefined;
-				}, THROTTLE_MS - timeSinceLastUpdate);
-			}
-		},
-		[canvasId, userId, updatePresence]
-	);
+	// 		if (timeSinceLastUpdate >= THROTTLE_MS) {
+	// 			// Enough time has passed, update immediately
+	// 			lastPresenceUpdateRef.current = now;
+	// 			updatePresence({
+	// 				canvasId,
+	// 				userId,
+	// 				cursor: cursorWorld ? { x: cursorWorld.x, y: cursorWorld.y } : undefined,
+	// 			});
+	// 		} else {
+	// 			// Too soon, schedule an update for later
+	// 			pendingPresenceRef.current = cursorWorld;
+	// 			presenceTimeoutRef.current = window.setTimeout(() => {
+	// 				lastPresenceUpdateRef.current = Date.now();
+	// 				updatePresence({
+	// 					canvasId,
+	// 					userId,
+	// 					cursor: pendingPresenceRef.current
+	// 						? { x: pendingPresenceRef.current.x, y: pendingPresenceRef.current.y }
+	// 						: undefined,
+	// 				});
+	// 				pendingPresenceRef.current = undefined;
+	// 				presenceTimeoutRef.current = undefined;
+	// 			}, THROTTLE_MS - timeSinceLastUpdate);
+	// 		}
+	// 	},
+	// 	[canvasId, userId, updatePresence]
+	// );
 
 	const handleSaveTitle = useCallback(
 		async (title: string) => {
@@ -159,6 +201,10 @@ export default function CanvasPage({ slug }: { slug: string }) {
 		<div className="w-full h-dvh flex flex-col lg:flex-row">
 			<BackButton />
 			<div className="relative flex-1 bg-gradient-to-b from-neutral-100 to-neutral-200 flex items-center justify-center p-4 overflow-hidden flex-col gap-6">
+				{/* Presence indicator - top right of canvas area on desktop */}
+				<div className="hidden lg:block absolute top-4 right-4 z-10">
+					<PresenceLayer presence={otherUsers} />
+				</div>
 				<div className="flex flex-col gap-2">
 					<EditableText
 						value={canvas?.title}
@@ -194,13 +240,15 @@ export default function CanvasPage({ slug }: { slug: string }) {
 						color={color}
 						size={size}
 						strokes={strokes ?? []}
-						onCursor={throttledUpdatePresence}
 						onUndo={(handler) => {
 							undoHandlerRef.current = handler;
 						}}
 						isPublished={isPublished}
 					/>
-					<PresenceLayer presence={(getPresence ?? []).filter(p => p.userId !== userId)} />
+				</div>
+				{/* Presence indicator - below canvas on mobile only */}
+				<div className="lg:hidden">
+					<PresenceLayer presence={otherUsers} />
 				</div>
 			</div>
 			<Toolbar

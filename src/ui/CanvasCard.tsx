@@ -15,6 +15,9 @@ type CanvasCardProps = {
 	creatorImageUrl?: string;
 	showDelete?: boolean;
 	onDelete?: () => void;
+	hideContributorCountOnMobile?: boolean;
+	showPublishedBadge?: boolean;
+	thumbnailUrl?: string | null;
 };
 
 export default function CanvasCard({
@@ -30,6 +33,9 @@ export default function CanvasCard({
 	creatorImageUrl,
 	showDelete = false,
 	onDelete,
+	hideContributorCountOnMobile = false,
+	showPublishedBadge = true,
+	thumbnailUrl,
 }: CanvasCardProps) {
 	const displayTitle = title || "Untitled Canvas";
 	const displayDescription = description || "No description";
@@ -55,10 +61,10 @@ export default function CanvasCard({
 		>
 		{/* Canvas Preview */}
 		<div className="aspect-square bg-white flex items-center justify-center relative overflow-hidden">
-			<CanvasPreview canvasId={id} className="w-full h-full" />
+			<CanvasPreview canvasId={id} className="w-full h-full" thumbnailUrl={thumbnailUrl} />
 
 			{/* Published badge */}
-			{isPublished && (
+			{isPublished && showPublishedBadge && (
 				<div className="absolute top-2 right-2 px-2 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full border border-amber-200">
 					Published
 				</div>
@@ -93,12 +99,12 @@ export default function CanvasCard({
 				<h3 className="font-serif font-bold text-lg text-neutral-900 mb-1 line-clamp-1">
 					{displayTitle}
 				</h3>
-				<p className="text-sm text-neutral-600 mb-3 line-clamp-2">
+				<p className="hidden sm:block text-sm text-neutral-600 mb-3 line-clamp-2">
 					{displayDescription}
 				</p>
-				<div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
+				<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-neutral-500 mb-2 gap-1">
 					<span>{formatDate(publishedAt || createdAt)}</span>
-					<span>{contributorCount} {contributorCount === 1 ? "contributor" : "contributors"}</span>
+					<span className={hideContributorCountOnMobile ? "hidden sm:inline" : ""}>{contributorCount} {contributorCount === 1 ? "contributor" : "contributors"}</span>
 				</div>
 				{creatorName && (
 					<div className="flex items-center gap-2 pt-2 border-t border-neutral-100">
